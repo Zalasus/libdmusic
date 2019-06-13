@@ -34,3 +34,8 @@
 .vscode/
 build/
 .cquery
+
+# Eclipse CDT stuff
+.cproject
+.project
+.settings/
