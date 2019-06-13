@@ -104,6 +104,19 @@ fill_buffer:
     }
 }
 
+std::vector<uint8_t> PlayingContext::loadFromFile(const std::string &filename)
+{
+    std::ifstream inputStream(filename, std::ios::binary | std::ios::ate);
+    if (!inputStream.is_open()) {
+        return std::vector<std::uint8_t>();
+    }
+    std::vector<std::uint8_t> buffer(inputStream.tellg());
+    inputStream.seekg(0);
+    inputStream.read((char*)buffer.data(), buffer.size());
+    inputStream.close();
+    return std::move(buffer);
+}
+
 void PlayingContext::renderBlock(std::int16_t *data, std::uint32_t count, float volume) noexcept {
     m_queueMutex.lock();
 
@@ -311,6 +324,14 @@ void PlayingContext::playSegment(std::shared_ptr<SegmentInfo> segment, SegmentTi
     m_queueMutex.unlock();
 }
 
+void PlayingContext::provideLoader(FileLoader l) {
+    if(l == nullptr) {
+        m_loader = std::bind(&PlayingContext::loadFromFile, std::placeholders::_1);
+    }else {
+        m_loader = l;
+    }
+}
+
 bool PlayingContext::getRandomPattern(const SegmentInfo& segm, std::uint8_t grooveLevel, Pattern* output) const {
     std::vector<int> suitablePatterns;
     for (size_t i = 0; i < segm.patterns.size(); i++) {
@@ -340,7 +361,7 @@ std::shared_ptr<DirectMusic::DLS::DownloadableSound> PlayingContext::loadInstrum
 
     if (m_bands.find(id) == m_bands.end()) {
         TRACE("Loading new band");
-        std::vector<std::uint8_t> data = m_loader(file);
+        std::vector<std::uint8_t> data = (m_dlsLoader != nullptr) ? m_dlsLoader(bandGuid, file) : m_loader(file);
         band = genObjFromChunkData<DirectMusic::DLS::DownloadableSound>(data);
 
         if (band == nullptr) {
@@ -362,7 +383,7 @@ std::shared_ptr<StyleForm> PlayingContext::loadStyle(const GUID& guid, const std
 
     if (m_styles.find(key) == m_styles.end()) {
         TRACE("Loading new style");
-        std::vector<std::uint8_t> data = m_loader(file);
+        std::vector<std::uint8_t> data = (m_styleLoader != nullptr) ? m_styleLoader(guid, file) : m_loader(file);
         style = genObjFromChunkData<StyleForm>(data);
 
         if (style == nullptr) {

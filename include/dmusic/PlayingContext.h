@@ -37,6 +37,9 @@ namespace DirectMusic {
     using MessageQueue = std::priority_queue<std::shared_ptr<MusicMessage>, std::vector<std::shared_ptr<MusicMessage>>, MusicMessageComparer>;
     using GuidStringPair = std::pair<GUID, std::string>;
 
+    using FileLoader = std::function<std::vector<uint8_t>(const std::string&)>;
+    using GuidFileLoader = std::function<std::vector<uint8_t>(const GUID&, const std::string&)>;
+
     class SegmentInfo;
 
     enum class SegmentTiming {
@@ -63,7 +66,9 @@ namespace DirectMusic {
         PlayerFactory m_instrumentFactory;
         GMPlayerFactory  m_gminstrumentFactory; //< Used to instantiate instruments that come from GM patches
         std::uint32_t m_sampleRate, m_audioChannels;
-        std::function<std::vector<std::uint8_t>(const std::string&)> m_loader;
+        FileLoader m_loader;
+        GuidFileLoader m_dlsLoader;
+        GuidFileLoader m_styleLoader;
         std::map<std::uint32_t, std::shared_ptr<InstrumentPlayer>> m_performanceChannels;
         std::uint32_t m_musicTime;
         double m_tempo;
@@ -91,6 +96,9 @@ namespace DirectMusic {
 
         void renderAudio(std::int16_t *data, std::uint32_t count, float volume) noexcept;
 
+        static std::vector<uint8_t> loadFromFile(const std::string &filename);
+
+
     public:
 
         static const std::uint32_t PulsesPerQuarterNote = 768;
@@ -110,17 +118,7 @@ namespace DirectMusic {
             m_tempo(100),
             m_primarySegment(nullptr)
         {
-            m_loader = [](const std::string& file) -> std::vector<std::uint8_t> {
-                std::ifstream inputStream(file, std::ios::binary | std::ios::ate);
-                if (!inputStream.is_open()) {
-                    return std::vector<std::uint8_t>();
-                }
-                std::vector<std::uint8_t> buffer(inputStream.tellg());
-                inputStream.seekg(0);
-                inputStream.read((char*)buffer.data(), buffer.size());
-                inputStream.close();
-                return buffer;
-            };
+            provideLoader(nullptr); // will install the default loader
 
             m_signature.bBeat = 4;
             m_signature.bBeatsPerMeasure = 4;
@@ -142,8 +140,15 @@ namespace DirectMusic {
                             DMUS_COMPOSEF_FLAGS flags,
                             std::shared_ptr<ChordmapForm> chordmap = nullptr);*/
 
-        /// Overrides the default loader with a custom one
-        void provideLoader(std::function<std::vector<std::uint8_t>(const std::string&)> l) { m_loader = l; };
+        /// Overrides the default loader with a custom one. Pass nullptr to reinstate the default loader.
+        /// This generic, filename-based loader is only used as a fallback if no specialized loaders for DLSs/styles are provided.
+        void provideLoader(FileLoader l);
+
+        /// Provides a loader for loading DLS data. This overrides the generic loader when loading DLSs.
+        void provideDlsLoader(GuidFileLoader l) { m_dlsLoader = l; }
+
+        /// Provides a loader for loading style data. This overrides the generic loader when loading styles.
+        void provideStyleLoader(GuidFileLoader l) { m_styleLoader = l; }
 
         /// Loads a segment file
         std::shared_ptr<SegmentForm> loadSegment(const std::string& file) const {
